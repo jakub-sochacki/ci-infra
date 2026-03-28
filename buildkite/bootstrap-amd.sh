@@ -54,7 +54,7 @@ upload_pipeline() {
             https://raw.githubusercontent.com/vllm-project/ci-infra/"$VLLM_CI_BRANCH"/buildkite/test-template-fastcheck.j2
     else
         curl -o .buildkite/test-template.j2 \
-            "https://raw.githubusercontent.com/vllm-project/ci-infra/$VLLM_CI_BRANCH/buildkite/test-template-ci.j2?$(date +%s)"
+            "https://raw.githubusercontent.com/vllm-project/ci-infra/$VLLM_CI_BRANCH/buildkite/test-template-amd.j2?$(date +%s)"
     fi
 
 
@@ -76,7 +76,7 @@ upload_pipeline() {
     (
         set -x
         # Output pipeline.yaml with all blank lines removed
-        minijinja-cli test-template.j2 test-pipeline.yaml \
+        minijinja-cli test-template.j2 test-amd.yaml \
             -D branch="$BUILDKITE_BRANCH" \
             -D list_file_diff="$LIST_FILE_DIFF" \
             -D run_all="$RUN_ALL" \
@@ -114,30 +114,27 @@ fi
 # Early exit start: skip pipeline if conditions are met
 # ----------------------------------------------------------------------
 
-# skip pipeline if *every* changed file is docs/** OR **/*.md OR mkdocs.yaml
+# skip pipeline if all changed files are under docs/
 if [[ "${DOCS_ONLY_DISABLE}" != "1" ]]; then
   if [[ -n "${file_diff:-}" ]]; then
     docs_only=1
-    # Iterate robustly over newline-separated paths
+    # Robust iteration over newline-separated file_diff
     while IFS= read -r f; do
       [[ -z "$f" ]] && continue
-      # Match any of: docs/**  OR  **/*.md  OR  mkdocs.yaml
-      # Using prefix check for docs/ so nested paths match (no need for globstar).
-      if [[ "${f#docs/}" != "$f" || "$f" == *.md || "$f" == "mkdocs.yaml" ]]; then
-        continue
-      else
+      # **Policy:** only skip if *every* path starts with docs/
+      if [[ "$f" != docs/* ]]; then
         docs_only=0
         break
       fi
     done < <(printf '%s\n' "$file_diff" | tr ' ' '\n' | tr -d '\r')
 
     if [[ "$docs_only" -eq 1 ]]; then
-      buildkite-agent annotate ":memo: CI skipped — docs/Markdown/mkdocs-only changes detected
+      buildkite-agent annotate ":memo: CI skipped — docs/** only changes detected
 
 \`\`\`
-$(printf '%s\n' "$file_diff" | tr ' ' '\n')
+${file_diff}
 \`\`\`" --style "info" || true
-      echo "[docs-only] All changes are docs/**, *.md, or mkdocs.yaml. Exiting before pipeline upload."
+      echo "[docs-only] All changes are under docs/. Exiting before pipeline upload."
       exit 0
     fi
   fi
